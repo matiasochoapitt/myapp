@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+import webbrowser
 
 # Inicializar la aplicación Dash
 app = dash.Dash(__name__)
@@ -135,6 +136,11 @@ def actualizar_dashboard(tickers_seleccionados, start_date, end_date):
     
     return fig, optimal_info
 
+
+# Función para abrir el navegador automáticamente
+def open_browser():
+    webbrowser.open_new("http://127.0.0.1:8050/")
+server = app.server
 # Ejecutar la aplicación
-if __name__ == '__main__':
-    app.run_server(debug=True)
+if __name__ == '_main_':
+    app.run_server(debug=False, host='0.0.0.0', port=8080)
