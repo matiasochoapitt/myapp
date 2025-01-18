@@ -3,5 +3,5 @@ pandas
 plotly
 numpy
 gunicorn
-yfinance == 0.2.51
+yfinance == 0.2.50
 streamlit
