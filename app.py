@@ -1,18 +1,30 @@
-import dash
-from dash import dcc, html
-from dash.dependencies import Input, Output
+import streamlit as st
 import yfinance as yf
 import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-import webbrowser
-
-# Inicializar la aplicación Dash
-app = dash.Dash(__name__)
 
 # Lista de tickers disponibles para seleccionar
-tickers_disponibles = ['AAPL', 'GOOG', 'MSFT', 'AMZN', 'TSLA', 'FB', 'NVDA', 'SPY', 'V', 'NFLX']
+url = "https://en.wikipedia.org/wiki/NASDAQ-100"
+tables = pd.read_html(url)
+nasdaq100_table = tables[4]
+nasdaq100_tickers = nasdaq100_table['Symbol']
+
+url = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
+
+tables = pd.read_html(url)
+sp500_table = tables[0]
+
+sp500_tickers = sp500_table['Symbol']
+
+tickers = []
+tickers.extend(sp500_tickers)
+tickers.extend(nasdaq100_tickers)
+tickers = set(tickers)
+tickers = list(set(tickers))
+
+tickers_disponibles = tickers
 
 # Función para descargar los datos históricos de los tickers
 def obtener_datos(tickers, start_date, end_date):
@@ -21,13 +33,15 @@ def obtener_datos(tickers, start_date, end_date):
 
 # Función para calcular los rendimientos diarios
 def calcular_rendimientos(datos):
-    rendimientos = datos.pct_change().dropna()
+    rendimientos = datos.pct_change().dropna() 
     return rendimientos
 
 # Función para realizar la simulación de portafolios
-def simular_portafolios(rendimientos, num_simulaciones=10000):
+def simular_portafolios(rendimientos, num_simulaciones=5000):
     num_activos = len(rendimientos.columns)
     resultados = np.zeros((num_simulaciones, 3))  # columnas: [rendimiento, volatilidad, ratio de Sharpe]
+    pesos_portafolios = np.zeros((num_simulaciones, num_activos))  # Para almacenar los pesos
+    
     for i in range(num_simulaciones):
         # Generar pesos aleatorios que sumen 1
         pesos = np.random.random(num_activos)
@@ -42,105 +56,128 @@ def simular_portafolios(rendimientos, num_simulaciones=10000):
         
         # Guardar resultados
         resultados[i] = [rendimiento_portafolio, volatilidad_portafolio, ratio_sharpe]
+        pesos_portafolios[i] = pesos  # Guardar los pesos correspondientes a este portafolio
     
-    return resultados
+    return resultados, pesos_portafolios
 
-# Layout del Dashboard
-app.layout = html.Div([
-    html.H1("Simulación de Portafolios de Inversión", style={'text-align': 'center'}),
-    
-    # Selección de tickers
-    dcc.Dropdown(
-        id='tickers-dropdown',
-        options=[{'label': ticker, 'value': ticker} for ticker in tickers_disponibles],
-        value=['AAPL', 'GOOG', 'MSFT'],  # Valor por defecto
-        multi=True,
-        style={'width': '50%', 'margin': 'auto'}
-    ),
-    
-    # Selector de rango de fechas
-    dcc.DatePickerRange(
-        id='date-picker-range',
-        start_date='2018-01-01',
-        end_date='2023-01-01',
-        display_format='YYYY-MM-DD',  # Formato de fecha
-        style={'width': '50%', 'margin': 'auto'}
-    ),
-    
-    # Gráfico interactivo
-    dcc.Graph(id='portafolio-graph'),
-    
-    # Mostrar el resultado del portafolio óptimo
-    html.Div(id='optimal-portfolio-info', style={'text-align': 'center', 'margin-top': '20px'})
-])
+# Título de la aplicación
+st.title("Simulación de Portafolios de Inversión")
 
-# Callback para actualizar el gráfico y la información del portafolio óptimo
-@app.callback(
-    [Output('portafolio-graph', 'figure'),
-     Output('optimal-portfolio-info', 'children')],
-    [Input('tickers-dropdown', 'value'),
-     Input('date-picker-range', 'start_date'),
-     Input('date-picker-range', 'end_date')]
+# Selección de tickers
+tickers_seleccionados = st.multiselect(
+    "Selecciona los tickers",
+    options=tickers_disponibles,
+    default=['AAPL', 'GOOG', 'MSFT']  # Valor por defecto
 )
-def actualizar_dashboard(tickers_seleccionados, start_date, end_date):
-    # Obtener los datos históricos
-    datos = obtener_datos(tickers_seleccionados, start_date, end_date)
-    
-    # Calcular los rendimientos
-    rendimientos = calcular_rendimientos(datos)
-    
-    # Realizar la simulación de portafolios
-    resultados = simular_portafolios(rendimientos)
-    
-    # Convertir resultados a un DataFrame
-    sim_out_df = pd.DataFrame(resultados, columns=['Portfolio_Return', 'Volatility', 'Sharpe_Ratio'])
-    
-    # Extraer el portafolio con el mayor ratio de Sharpe
-    idx_max_sharpe = np.argmax(resultados[:, 2])
-    optimal_portfolio_return = resultados[idx_max_sharpe, 0]
-    optimal_volatility = resultados[idx_max_sharpe, 1]
-    optimal_sharpe_ratio = resultados[idx_max_sharpe, 2]
-    
-    # Crear el gráfico interactivo con Plotly
-    fig = px.scatter(sim_out_df, 
-                     x='Portfolio_Return', 
-                     y='Volatility', 
-                     color='Sharpe_Ratio', 
-                     hover_data=['Sharpe_Ratio'], 
-                     color_continuous_scale='Viridis')
-    
-    # Resaltar el punto con el mayor ratio de Sharpe
-    fig.add_trace(go.Scatter(
-        x=[optimal_portfolio_return], 
-        y=[optimal_volatility], 
-        mode='markers', 
-        name='Optimal Point', 
-        marker=dict(size=20, color='red')
-    ))
 
-    fig.update_layout(
-        title='Simulación de Portafolios',
-        xaxis_title='Rendimiento Anualizado',
-        yaxis_title='Volatilidad Anualizada',
-        plot_bgcolor="white",
-        coloraxis_colorbar=dict(y=0.7, dtick=5)
-    )
-    
-    # Información del portafolio óptimo
-    optimal_info = (
-        f"Portafolio con el mayor ratio de Sharpe:\n"
-        f"Rendimiento anualizado: {optimal_portfolio_return:.2f}\n"
-        f"Volatilidad anualizada: {optimal_volatility:.2f}\n"
-        f"Ratio de Sharpe: {optimal_sharpe_ratio:.2f}"
-    )
-    
-    return fig, optimal_info
+# Selector de rango de fechas
+start_date = st.date_input("Fecha de inicio", value=pd.to_datetime('2001-01-01'))
+end_date = st.date_input("Fecha de fin", value=pd.to_datetime('2023-01-01'))
 
+# Mostrar los tickers seleccionados y las fechas
+st.write(f"Tickers seleccionados: {tickers_seleccionados}")
+st.write(f"Rango de fechas: {start_date} a {end_date}")
 
-# Función para abrir el navegador automáticamente
-def open_browser():
-    webbrowser.open_new("http://127.0.0.1:8050/")
-server = app.server
-# Ejecutar la aplicación
-if __name__ == '_main_':
-    app.run_server(debug=False, host='0.0.0.0', port=8080)
+# Descargar y procesar los datos
+datos = obtener_datos(tickers_seleccionados, start_date, end_date)
+rendimientos = calcular_rendimientos(datos)
+
+# Realizar la simulación de portafolios
+resultados, pesos_portafolios = simular_portafolios(rendimientos)
+
+# Convertir resultados a un DataFrame
+sim_out_df = pd.DataFrame(resultados, columns=['Portfolio_Return', 'Volatility', 'Sharpe_Ratio'])
+
+# Extraer el portafolio con el mayor ratio de Sharpe
+idx_max_sharpe = np.argmax(resultados[:, 2])
+optimal_portfolio_return = resultados[idx_max_sharpe, 0]
+optimal_volatility = resultados[idx_max_sharpe, 1]
+optimal_sharpe_ratio = resultados[idx_max_sharpe, 2]
+optimal_weights = pesos_portafolios[idx_max_sharpe].round(2)  # Pesos del portafolio óptimo
+
+# Crear la tabla con los pesos de los tickers en el portafolio óptimo
+tabla_pesos = pd.DataFrame({
+    'Ticker': tickers_seleccionados,
+    'Peso': optimal_weights
+})
+
+# Mostrar la tabla con los pesos
+st.subheader("Pesos del Portafolio Óptimo")
+st.dataframe(tabla_pesos)
+
+# Información del portafolio óptimo
+st.subheader("Información del Portafolio Óptimo")
+st.write(f"**Rendimiento anualizado**: {optimal_portfolio_return*100:.2f}%")
+st.write(f"**Volatilidad anualizada**: {optimal_volatility*100:.2f}%")
+st.write(f"**Ratio de Sharpe**: {optimal_sharpe_ratio:.2f}")
+
+# Calcular el retorno acumulado del portafolio óptimo
+portafolio_acumulado = rendimientos.dot(optimal_weights).cumsum()*100
+
+# Descargar el dato de SPY y calcular su retorno acumulado
+start_common_date = portafolio_acumulado.index.min() - pd.Timedelta(days=1)
+datos_spy = obtener_datos(['SPY'], start_common_date, end_date)
+datos_spy = calcular_rendimientos(datos_spy)
+datos_spy = datos_spy.cumsum()
+datos_spy['SPY'] = datos_spy['SPY']*100
+
+# Graficar los retornos acumulados
+fig_ret_acumulado = go.Figure()
+
+# Agregar el gráfico del retorno acumulado del portafolio
+fig_ret_acumulado.add_trace(go.Scatter(
+    x=portafolio_acumulado.index,
+    y=portafolio_acumulado,
+    mode='lines',
+    name='Portafolio Óptimo',
+    line=dict(color='blue')
+))
+
+# Agregar el gráfico del retorno acumulado de SPY
+fig_ret_acumulado.add_trace(go.Scatter(
+    x=datos_spy.index,
+    y=datos_spy['SPY'],
+    mode='lines',
+    name='SPY',
+    line=dict(color='green')
+))
+
+# Configuración del gráfico
+fig_ret_acumulado.update_layout(
+    title='Retorno Acumulado: Portafolio Óptimo vs S&P 500',
+    xaxis_title='Fecha',
+    yaxis_title='Retorno Acumulado (%)',
+    plot_bgcolor="white"
+)
+
+# Mostrar el gráfico
+st.plotly_chart(fig_ret_acumulado)
+
+# Crear el gráfico interactivo con Plotly para la simulación de portafolios
+fig = px.scatter(sim_out_df, 
+                 x='Portfolio_Return', 
+                 y='Volatility', 
+                 color='Sharpe_Ratio', 
+                 hover_data=['Sharpe_Ratio'], 
+                 color_continuous_scale='Viridis')
+
+# Resaltar el punto con el mayor ratio de Sharpe
+fig.add_trace(go.Scatter(
+    x=[optimal_portfolio_return], 
+    y=[optimal_volatility], 
+    mode='markers', 
+    name='Portfolio Optimo', 
+    marker=dict(size=15, color='red')
+))
+
+# Configuración del gráfico de simulación de portafolios
+fig.update_layout(
+    title='Simulación de Portafolios',
+    xaxis_title='Rendimiento Anualizado',
+    yaxis_title='Volatilidad Anualizada',
+    plot_bgcolor="white",
+    coloraxis_colorbar=dict(y=0.7, dtick=5)
+)
+
+# Mostrar el gráfico de simulación de portafolios
+st.plotly_chart(fig)
