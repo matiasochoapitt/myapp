@@ -154,30 +154,49 @@ fig_ret_acumulado.update_layout(
 st.plotly_chart(fig_ret_acumulado)
 
 # Crear el gráfico interactivo con Plotly para la simulación de portafolios
+slope = optimal_portfolio_return / optimal_volatility
+x_vals = [-optimal_volatility, 2 * optimal_volatility]
+y_vals = [slope * x for x in x_vals]
+
+
+import plotly.express as px
+import plotly.graph_objects as go
+
 fig = px.scatter(sim_out_df, 
-                 x='Portfolio_Return', 
-                 y='Volatility', 
+                 x='Volatility', 
+                 y='Portfolio_Return', 
                  color='Sharpe_Ratio', 
                  hover_data=['Sharpe_Ratio'], 
                  color_continuous_scale='Viridis')
 
-# Resaltar el punto con el mayor ratio de Sharpe
+
 fig.add_trace(go.Scatter(
-    x=[optimal_portfolio_return], 
-    y=[optimal_volatility], 
+    x=x_vals, 
+    y=y_vals, 
+    mode='lines', 
+    name='Línea Extendida', 
+    line=dict(color='grey'),
+    showlegend=False,
+     ))
+
+
+fig.add_trace(go.Scatter(
+    x=[optimal_volatility], 
+    y=[optimal_portfolio_return], 
     mode='markers', 
-    name='Portfolio Optimo', 
-    marker=dict(size=15, color='red')
+    name='Optimal Point', 
+    marker=dict(size=15, color='grey'),
 ))
 
-# Configuración del gráfico de simulación de portafolios
 fig.update_layout(
-    title='Simulación de Portafolios',
-    xaxis_title='Rendimiento Anualizado',
-    yaxis_title='Volatilidad Anualizada',
+    title='Teoria Moderna del Portafolio y Frontera Eficiente',
+    xaxis_title='Volatilidad',
+    yaxis_title='Rendimiento Esperado',
     plot_bgcolor="white",
-    coloraxis_colorbar=dict(y=0.7, dtick=5)
+    coloraxis_colorbar=dict(y=0.7, dtick=5),
+    xaxis=dict(range=[sim_out_df['Volatility'].min()*0.9, sim_out_df['Volatility'].max()]),
+    yaxis=dict(range=[sim_out_df['Portfolio_Return'].min()*0.9, sim_out_df['Portfolio_Return'].max()])
 )
 
-# Mostrar el gráfico de simulación de portafolios
+
 st.plotly_chart(fig)
